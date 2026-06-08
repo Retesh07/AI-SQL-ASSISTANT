@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI SQL Assistant</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Syne:wght@400;700;800&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0f;
+      --surface: #111118;
+      --border: #1e1e2e;
+      --accent: #00e5ff;
+      --accent2: #7c3aed;
+      --text: #e2e2f0;
+      --muted: #6b6b8a;
+      --success: #00c896;
+      --error: #ff4f6a;
+      --sql-bg: #0d1117;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+    }
+
+    /* Background grid */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 860px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Header */
+    header {
+      text-align: center;
+      margin-bottom: 48px;
+      animation: fadeDown 0.6s ease both;
+    }
+
+    .badge {
+      display: inline-block;
+      background: rgba(0,229,255,0.08);
+      border: 1px solid rgba(0,229,255,0.2);
+      color: var(--accent);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      padding: 4px 14px;
+      border-radius: 20px;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      font-weight: 800;
+      line-height: 1.1;
+      background: linear-gradient(135deg, #fff 0%, var(--accent) 60%, var(--accent2) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 12px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 15px;
+      font-weight: 400;
+    }
+
+    /* Input card */
+    .input-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      margin-bottom: 24px;
+      animation: fadeUp 0.6s ease 0.1s both;
+    }
+
+    .input-label {
+      font-size: 12px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-family: 'JetBrains Mono', monospace;
+      margin-bottom: 12px;
+      display: block;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 12px;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      font-size: 15px;
+      padding: 14px 18px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    input[type="text"]:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0,229,255,0.08);
+    }
+
+    input[type="text"]::placeholder { color: var(--muted); }
+
+    button {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 10px;
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 14px;
+      padding: 14px 28px;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+      white-space: nowrap;
+      letter-spacing: 0.5px;
+    }
+
+    button:hover { opacity: 0.88; }
+    button:active { transform: scale(0.97); }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Example questions */
+    .examples {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .example-chip {
+      background: rgba(124,58,237,0.1);
+      border: 1px solid rgba(124,58,237,0.25);
+      color: #a78bfa;
+      font-size: 12px;
+      padding: 5px 12px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: background 0.2s;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .example-chip:hover { background: rgba(124,58,237,0.2); }
+
+    /* Loading */
+    .loading {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 14px;
+      font-family: 'JetBrains Mono', monospace;
+      margin-bottom: 24px;
+      animation: fadeUp 0.3s ease both;
+    }
+
+    .loading.show { display: flex; }
+
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    /* Result cards */
+    .results-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      animation: fadeUp 0.4s ease both;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.02);
+    }
+
+    .card-icon {
+      width: 28px; height: 28px;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+    }
+
+    .icon-sql { background: rgba(0,229,255,0.12); }
+    .icon-explain { background: rgba(124,58,237,0.12); }
+    .icon-results { background: rgba(0,200,150,0.12); }
+
+    .card-title {
+      font-size: 12px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .card-body { padding: 16px; }
+
+    .tab-bar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 0 16px 10px;
+    }
+
+    .tab-button {
+      appearance: none;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03);
+      color: var(--muted);
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+    }
+
+    .tab-button.active {
+      background: rgba(0,229,255,0.15);
+      color: var(--accent);
+      border-color: rgba(0,229,255,0.3);
+    }
+
+    .tab-panel {
+      display: none;
+    }
+
+    .tab-panel.active {
+      display: block;
+    }
+
+    .chart-card {
+      width: 100%;
+      min-height: 220px;
+      background: #09090f;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      padding: 14px;
+    }
+
+    .chart-card canvas {
+      width: 100% !important;
+      height: 220px !important;
+    }
+
+    .chart-message {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+    }
+
+    /* SQL block */
+    .sql-block {
+      background: var(--sql-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--accent);
+      line-height: 1.6;
+      word-break: break-all;
+    }
+
+    /* Explanation */
+    .explanation-text {
+      font-size: 14px;
+      line-height: 1.7;
+      color: #c4c4e0;
+    }
+
+    /* Results table */
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    th {
+      background: rgba(0,229,255,0.06);
+      color: var(--accent);
+      font-weight: 600;
+      text-align: left;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      color: var(--text);
+    }
+
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+
+    .no-results {
+      text-align: center;
+      color: var(--muted);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      padding: 20px;
+    }
+
+    /* Row count badge */
+    .row-count {
+      font-size: 11px;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--muted);
+      margin-left: auto;
+    }
+
+    /* Error */
+    .error-card {
+      background: rgba(255,79,106,0.08);
+      border: 1px solid rgba(255,79,106,0.25);
+      border-radius: 14px;
+      padding: 18px 22px;
+      color: var(--error);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      animation: fadeUp 0.3s ease both;
+    }
+
+    /* Animations */
+    @keyframes fadeDown {
+      from { opacity: 0; transform: translateY(-16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .chart-card {
+      width: 100%;
+      min-height: 260px;
+      background: #09090f;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      padding: 18px;
+    }
+
+    .history-item {
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.02);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      cursor: pointer;
+      transition: transform 0.2s ease, background 0.2s ease;
+    }
+
+    .history-item:hover {
+      transform: translateY(-2px);
+      background: rgba(255,255,255,0.05);
+    }
+
+    /* Footer */
+    footer {
+      margin-top: 48px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      animation: fadeUp 0.6s ease 0.3s both;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="container">
+
+    <header>
+      
+      <h1>AI SQL Assistant</h1>
+      <p class="subtitle">Ask questions in plain English — get instant SQL results</p>
+    </header>
+    <div class="input-card">
+  <label class="input-label">📁 Upload Your Database</label>
+  <div class="input-row">
+    <input type="file" id="dbFile" accept=".db" />
+    <button onclick="uploadDatabase()">Upload →</button>
+  </div>
+  <p id="uploadStatus" style="font-size:12px; margin-top:10px; font-family: JetBrains Mono; color:var(--muted)"></p>
+</div>
+<!-- MYSQL CONNECTION PANEL (NEW ONLY) -->
+<div class="input-card">
+  <label class="input-label">🛢️ MySQL Connection</label>
+
+  <div class="input-row" style="flex-wrap: wrap;">
+    <input type="text" id="mysqlHost" placeholder="Host (e.g. localhost)" />
+    <input type="text" id="mysqlUser" placeholder="User (root)" />
+    <input type="password" id="mysqlPass" placeholder="Password" />
+    <input type="text" id="mysqlDB" placeholder="Database name" />
+    <button onclick="connectMySQL()">Connect →</button>
+  </div>
+
+  <p id="mysqlStatus"
+     style="font-size:12px; margin-top:10px; font-family: JetBrains Mono; color:var(--muted)">
+  </p>
+</div>
+
+    <div class="input-card">
+      <label class="input-label">Your Question</label>
+      <div class="input-row">
+        <input type="text" id="questionInput" placeholder="e.g. Show all students in CSE with marks above 80" />
+        <button id="askBtn" onclick="askQuestion()">Ask →</button>
+      </div>
+      <div class="examples">
+        <span class="example-chip" onclick="fillExample(this)">show all students</span>
+        <span class="example-chip" onclick="fillExample(this)">who has the highest marks</span>
+        <span class="example-chip" onclick="fillExample(this)">students in CSE department</span>
+        <span class="example-chip" onclick="fillExample(this)">average marks by department</span>
+      </div>
+    </div>
+    
+
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <span>Generating SQL with Groq...</span>
+    </div>
+
+    <div id="errorBox"></div>
+    <div id="resultsArea"></div>
+
+
+    <div class="history-section">
+  <div class="input-card">
+    <label class="input-label">📋 Recent Queries</label>
+    <div id="historyList">Loading...</div>
+  </div>
+</div>
+
+    <footer>Built with FastAPI · SQLite · Groq API</footer>
+  </div>
+
+  <script>
+    const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:8000' : window.location.origin;
+    const input = document.getElementById('questionInput');
+    const btn = document.getElementById('askBtn');
+    const loading = document.getElementById('loading');
+    const errorBox = document.getElementById('errorBox');
+    const resultsArea = document.getElementById('resultsArea');
+
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') askQuestion();
+    });
+
+    function fillExample(el) {
+      input.value = el.textContent;
+      input.focus();
+    }
+
+    async function askQuestion() {
+      const question = input.value.trim();
+      if (!question) return;
+
+      // Reset UI
+      errorBox.innerHTML = '';
+      resultsArea.innerHTML = '';
+      loading.classList.add('show');
+      btn.disabled = true;
+
+      try {
+        const payload = {
+          question
+        };
+
+        if (mysqlConnected) {
+          payload.db_type = 'mysql';
+          payload.host = document.getElementById("mysqlHost").value;
+          payload.port = 3306;
+          payload.user = document.getElementById("mysqlUser").value;
+          payload.password = document.getElementById("mysqlPass").value;
+          payload.database = document.getElementById("mysqlDB").value;
+          payload.db_id = "mysql-global";
+        } else {
+          payload.db_type = 'sqlite';
+          payload.db_id = currentDbId;
+        }
+
+        const res = await fetch(`${API_BASE}/query`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.detail || 'Something went wrong');
+        }
+
+        renderResults(data);
+        console.log('Query successful, refreshing history...');
+        loadHistory();
+
+      } catch (err) {
+        errorBox.innerHTML = `<div class="error-card">⚠ ${err.message}</div>`;
+        console.error('Query error:', err);
+      } finally {
+        loading.classList.remove('show');
+        btn.disabled = false;
+      }
+    }
+
+function renderResults(data) {
+  // Normalize response formats: backend may return columns/rows at top-level or inside `results`
+  let columns = [];
+  let rows = [];
+
+  if (data.results) {
+    if (Array.isArray(data.results)) {
+      rows = data.results;
+    } else if (Array.isArray(data.results.rows)) {
+      rows = data.results.rows;
+    }
+    if (Array.isArray(data.results.columns)) {
+      columns = data.results.columns;
+    }
+  }
+
+  // fallback to top-level fields
+  if ((!rows || rows.length === 0) && Array.isArray(data.rows)) rows = data.rows;
+  if ((!columns || columns.length === 0) && Array.isArray(data.columns)) columns = data.columns;
+
+  // If rows are objects, convert to arrays using column order
+  if (rows.length > 0 && typeof rows[0] === 'object' && !Array.isArray(rows[0])) {
+    if (columns.length === 0) columns = Object.keys(rows[0]);
+    rows = rows.map(r => columns.map(c => r[c] ?? null));
+  }
+
+  lastResults = rows;
+
+  let tableHTML = '';
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    tableHTML = `<p class="no-results">No results found.</p>`;
+  } else {
+    // Build headers
+    const headers = Array.isArray(columns) && columns.length > 0
+      ? columns
+      : (Array.isArray(rows[0]) ? Array.from({ length: rows[0].length }, (_, i) => `Column ${i + 1}`) : Object.keys(rows[0] || {}));
+
+    tableHTML = `
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              ${headers.map(h => `<th>${h}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(row =>
+              `<tr>${(Array.isArray(row) ? row : Object.values(row)).map(cell => `<td>${cell ?? 'NULL'}</td>`).join('')}</tr>`
+            ).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  resultsArea.innerHTML = `
+    <div class="results-wrapper">
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon icon-sql">🔷</div>
+          <span class="card-title">Generated SQL</span>
+        </div>
+        <div class="card-body">
+          <div class="sql-block">${escapeHtml(data.sql)}</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon icon-explain">💡</div>
+          <span class="card-title">Explanation</span>
+        </div>
+        <div class="card-body">
+          <p class="explanation-text">${escapeHtml(data.explanation)}</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon icon-results">📊</div>
+          <span class="card-title">Results</span>
+          <span class="row-count">${rows.length} row${rows.length !== 1 ? 's' : ''}</span>
+          <button onclick="downloadCSV()" style="font-size:12px; padding:6px 14px; margin-left:10px;">Download CSV</button>
+        </div>
+        <div class="tab-bar">
+          <button class="tab-button active" id="tableTabBtn" onclick="setResultTab('table')">Table</button>
+          <button class="tab-button" id="chartTabBtn" onclick="setResultTab('chart')">Chart</button>
+        </div>
+        <div class="card-body tab-panel active" id="tablePanel" style="padding: ${rows.length ? '0' : '20px'}">
+          ${tableHTML}
+        </div>
+        <div class="card-body tab-panel" id="chartPanel">
+          <div class="chart-card">
+            <canvas id="resultsChart"></canvas>
+            <p id="chartMessage" class="chart-message">Chart will appear for numeric results.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>`;
+
+  renderChart(columns, rows);
+}
+
+function setResultTab(tab) {
+  const tableBtn = document.getElementById('tableTabBtn');
+  const chartBtn = document.getElementById('chartTabBtn');
+  const tablePanel = document.getElementById('tablePanel');
+  const chartPanel = document.getElementById('chartPanel');
+
+  if (!tableBtn || !chartBtn || !tablePanel || !chartPanel) return;
+
+  const isTable = tab === 'table';
+  tableBtn.classList.toggle('active', isTable);
+  chartBtn.classList.toggle('active', !isTable);
+  tablePanel.classList.toggle('active', isTable);
+  chartPanel.classList.toggle('active', !isTable);
+}
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    async function loadHistory() {
+  try {
+    const res = await fetch(`${API_BASE}/history`);
+    const data = await res.json();
+    
+    if (!res.ok) {
+      console.error(`History API returned ${res.status}:`, data);
+      throw new Error(data.detail || 'Failed to fetch history');
+    }
+    
+    if (data.history.length === 0) {
+      document.getElementById('historyList').innerHTML = 
+        '<p style="color:var(--muted); font-size:13px; font-family: JetBrains Mono">No queries yet</p>';
+      return;
+    }
+
+    const html = data.history.map(h => {
+      const question = h[0];
+      const dbId = h[2] || 'unknown';
+      const time = h[3];
+      const label = dbId === 'mysql-global' ? 'MySQL' : `SQLite (${dbId})`;
+      return `
+      <div class="history-item" onclick="fillExample2('${question.replace(/'/g, "\\'")}')">
+        <div style="display:flex; justify-content:space-between; gap:8px; align-items:center;">
+          <span class="history-question">📝 ${question}</span>
+          <span style="font-size:12px; color:var(--muted); background:rgba(0,0,0,.05); border-radius:999px; padding:2px 8px;">${label}</span>
+        </div>
+        <span class="history-time">${time}</span>
+      </div>
+    `;
+    }).join('');
+
+    document.getElementById('historyList').innerHTML = html;
+  } catch(err) {
+    console.error('loadHistory error:', err);
+    document.getElementById('historyList').innerHTML = 
+      `<p style="color:var(--error); font-size:12px; font-family: JetBrains Mono">Error: ${err.message}</p>`;
+  }
+}
+
+function fillExample2(question) {
+  input.value = question;
+  input.focus();
+}
+
+function isNumeric(value) {
+  return !Number.isNaN(Number(value));
+}
+
+function renderChart(columns, rows) {
+  const canvas = document.getElementById('resultsChart');
+  const message = document.getElementById('chartMessage');
+
+  if (!canvas || !message) return;
+
+  if (window.currentChart) {
+    window.currentChart.destroy();
+  }
+
+  if (!Array.isArray(rows) || rows.length === 0 || !Array.isArray(columns) || columns.length === 0) {
+    message.textContent = 'No data available for charting.';
+    return;
+  }
+
+  const numericColumnIndex = columns.findIndex((_, idx) => {
+    return rows.some(row => row[idx] != null && isNumeric(row[idx]));
+  });
+
+  if (numericColumnIndex === -1) {
+    message.textContent = 'No numeric column found for visualization.';
+    return;
+  }
+
+  const labelColumnIndex = columns.findIndex((_, idx) => idx !== numericColumnIndex && rows.some(row => typeof row[idx] === 'string'));
+  const labels = labelColumnIndex !== -1
+    ? rows.map(row => String(row[labelColumnIndex] ?? ''))
+    : rows.map((_, index) => `Row ${index + 1}`);
+
+  const dataset = rows.map(row => Number(row[numericColumnIndex]) || 0);
+
+  window.currentChart = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: columns[numericColumnIndex],
+        data: dataset,
+        backgroundColor: 'rgba(0, 229, 255, 0.65)',
+        borderColor: 'rgba(0, 229, 255, 1)',
+        borderWidth: 1,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { ticks: { color: '#cbd5e1' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+        y: { ticks: { color: '#cbd5e1' }, grid: { color: 'rgba(255,255,255,0.05)' }, beginAtZero: true }
+      },
+      plugins: {
+        legend: { labels: { color: '#fff' } },
+        tooltip: { enabled: true }
+      }
+    }
+  });
+
+  message.textContent = '';
+}
+
+loadHistory();
+
+let currentDbId = null;
+
+async function uploadDatabase() {
+  const file = document.getElementById('dbFile').files[0];
+  if (!file) {
+    alert('Please select a .db file first');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch(`${API_BASE}/upload-db`, {
+      method: 'POST',
+      body: formData
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || 'Upload failed');
+    }
+
+    currentDbId = data.db_id;
+    mysqlConnected = false;
+    mysqlDbId = null;
+    document.getElementById('uploadStatus').textContent = 
+      `✅ Database uploaded successfully! ID: ${currentDbId}`;
+    document.getElementById('uploadStatus').style.color = 'var(--success)';
+    document.getElementById('mysqlStatus').textContent = 'MySQL connection disabled after SQLite upload';
+    document.getElementById('mysqlStatus').style.color = 'var(--muted)';
+
+  } catch(err) {
+    document.getElementById('uploadStatus').textContent = `❌ Upload failed: ${err.message}`;
+    document.getElementById('uploadStatus').style.color = 'var(--error)';
+  }
+}
+let lastResults = [];
+
+function downloadCSV() {
+  if (!lastResults.length) return;
+  
+  const csv = lastResults.map(row => row.join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "results.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+let mysqlConnected = false;
+let mysqlDbId = null;
+
+async function connectMySQL() {
+  const host = document.getElementById("mysqlHost").value;
+  const user = document.getElementById("mysqlUser").value;
+  const pass = document.getElementById("mysqlPass").value;
+  const db = document.getElementById("mysqlDB").value;
+
+  const status = document.getElementById("mysqlStatus");
+  status.style.color = "var(--muted)";
+  status.textContent = "Connecting...";
+
+  try {
+    const res = await fetch(`${API_BASE}/use-mysql`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        host,
+        user,
+        password: pass,
+        database: db
+      })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) throw new Error(data.detail || "Connection failed");
+
+    mysqlConnected = true;
+    mysqlDbId = "mysql-global";
+    currentDbId = null;
+    document.getElementById('uploadStatus').textContent = 'SQLite disabled while MySQL is connected';
+    document.getElementById('uploadStatus').style.color = 'var(--muted)';
+
+    status.style.color = "var(--success)";
+    status.textContent = "✅ MySQL Connected Successfully";
+
+  } catch (err) {
+    status.style.color = "var(--error)";
+    status.textContent = "❌ " + err.message;
+  }
+}
+  </script>
+</body>
+</html>
