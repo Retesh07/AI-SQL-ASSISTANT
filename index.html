@@ -554,12 +554,10 @@
         }
 
         renderResults(data);
-        console.log('Query successful, refreshing history...');
         loadHistory();
 
       } catch (err) {
         errorBox.innerHTML = `<div class="error-card">⚠ ${err.message}</div>`;
-        console.error('Query error:', err);
       } finally {
         loading.classList.remove('show');
         btn.disabled = false;
@@ -699,11 +697,6 @@ function setResultTab(tab) {
     const res = await fetch(`${API_BASE}/history`);
     const data = await res.json();
     
-    if (!res.ok) {
-      console.error(`History API returned ${res.status}:`, data);
-      throw new Error(data.detail || 'Failed to fetch history');
-    }
-    
     if (data.history.length === 0) {
       document.getElementById('historyList').innerHTML = 
         '<p style="color:var(--muted); font-size:13px; font-family: JetBrains Mono">No queries yet</p>';
@@ -728,9 +721,8 @@ function setResultTab(tab) {
 
     document.getElementById('historyList').innerHTML = html;
   } catch(err) {
-    console.error('loadHistory error:', err);
     document.getElementById('historyList').innerHTML = 
-      `<p style="color:var(--error); font-size:12px; font-family: JetBrains Mono">Error: ${err.message}</p>`;
+      '<p style="color:var(--muted)">Could not load history</p>';
   }
 }
 
