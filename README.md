@@ -7,8 +7,6 @@ AI-powered SQL assistant that converts natural language questions into SQL queri
 https://ai-sql-assistant-93qc.onrender.com/app
 
 ## Features
-
-* Natural Language → SQL conversion
 * SQLite file upload support
 * Live MySQL database connection
 * AI-generated SQL explanations
