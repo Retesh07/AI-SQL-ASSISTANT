@@ -323,6 +323,21 @@
       overflow-x: auto;
     }
 
+    #schemaContent {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      line-height: 1.8;
+      color: var(--text);
+    }
+
+    .table-block {
+      padding: 10px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.06);
+      margin-bottom: 10px;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
@@ -445,6 +460,10 @@
   </div>
   <p id="uploadStatus" style="font-size:12px; margin-top:10px; font-family: JetBrains Mono; color:var(--muted)"></p>
 </div>
+<div class="input-card" id="schemaSection" style="display:none;">
+  <label class="input-label">📊 Database Schema</label>
+  <div id="schemaContent"></div>
+</div>
 <!-- MYSQL CONNECTION PANEL (NEW ONLY) -->
 <div class="input-card">
   <label class="input-label">🛢️ MySQL Connection</label>
@@ -486,12 +505,8 @@
     <div id="resultsArea"></div>
 
 
-    <div class="history-section">
-  <div class="input-card">
-    <label class="input-label">📋 Recent Queries</label>
-    <div id="historyList">Loading...</div>
-  </div>
-</div>
+    
+ 
 
     <footer>Built with FastAPI · SQLite · Groq API</footer>
   </div>
@@ -551,6 +566,18 @@
 
         if (!res.ok) {
           throw new Error(data.detail || 'Something went wrong');
+        }
+
+        // Relevance check returned 200 OK but with an error field
+        if (data.error) {
+          const confidence = data.confidence !== undefined ? ` (confidence: ${data.confidence}%)` : '';
+          errorBox.innerHTML = `
+            <div class="error-card" style="background:rgba(255,160,0,0.08); border-color:rgba(255,160,0,0.3); color:#ffa500;">
+              ⚠ <strong>Irrelevant Question</strong>${confidence}<br/>
+              <span style="opacity:0.85">${data.error}</span><br/>
+              <span style="font-size:12px; opacity:0.65; margin-top:6px; display:block">${data.reason || ''}</span>
+            </div>`;
+          return;
         }
 
         renderResults(data);
@@ -799,6 +826,21 @@ loadHistory();
 
 let currentDbId = null;
 
+function renderSchema(schema) {
+  const section = document.getElementById("schemaSection");
+  const content = document.getElementById("schemaContent");
+  let html = "";
+  for (const table in schema) {
+    html += `      <div class="table-block">        <strong>📁 ${table}</strong><br>    `;
+    schema[table].forEach(col => {
+      html += `&nbsp;&nbsp;• ${col}<br>`;
+    });
+    html += `</div>`;
+  }
+  content.innerHTML = html;
+  section.style.display = "block";
+}
+
 async function uploadDatabase() {
   const file = document.getElementById('dbFile').files[0];
   if (!file) {
@@ -821,6 +863,9 @@ async function uploadDatabase() {
     }
 
     currentDbId = data.db_id;
+    const schemaRes = await fetch(`${API_BASE}/schema/${currentDbId}`);
+    const schemaData = await schemaRes.json();
+    renderSchema(schemaData.schema);
     mysqlConnected = false;
     mysqlDbId = null;
     document.getElementById('uploadStatus').textContent = 

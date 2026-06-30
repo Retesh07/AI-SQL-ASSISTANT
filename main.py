@@ -4,7 +4,11 @@ import shutil
 from pydantic import BaseModel
 from typing import Optional
 import sqlite3
-from llm import generate_sql, explain_sql
+from llm import (
+    generate_sql,
+    explain_sql,
+    check_question_relevance
+)
 from validator import validate_sql
 from database import init_db, save_query_history
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,12 +43,12 @@ logger = logging.getLogger(__name__)
 class QueryRequest(BaseModel):
     question: str
     db_type: str
-    db_id: str = None
-    host: str = None
+    db_id: Optional[str] = None
+    host: Optional[str] = None
     port: int = 3306
-    user: str = None
-    password: str = None
-    database: str = None
+    user: Optional[str] = None
+    password: Optional[str] = None
+    database: Optional[str] = None
 
 
 class MySQLConnRequest(BaseModel):
@@ -77,19 +81,6 @@ def home():
     return {"message": "AI SQL Assistant is running!"}
 
 
-@app.get("/history")
-def get_history():
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT question, sql_query, db_id, created_at 
-        FROM query_history 
-        ORDER BY created_at DESC 
-        LIMIT 10
-    """)
-    history = cursor.fetchall()
-    conn.close()
-    return {"history": history}
 
 
 @app.post("/upload-db")
@@ -107,6 +98,38 @@ def upload_database(file: UploadFile = File(...)):
 
     return {"db_id": db_id, "message": "Database uploaded successfully"}
 
+@app.get("/schema/{db_id}")
+def get_schema(db_id: str):
+    db_path = f"uploads/{db_id}.db"
+
+    if not os.path.exists(db_path):
+        raise HTTPException(status_code=404, detail="Database not found")
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    schema_data = {}
+
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    tables = cursor.fetchall()
+    hidden_tables = {
+        "sqlite_sequence",
+        "query_history"
+    }
+
+    for table in tables:
+        table_name = table[0]
+        if table_name in hidden_tables:
+            continue
+
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        cols = cursor.fetchall()
+
+        schema_data[table_name] = [c[1] for c in cols]
+
+    conn.close()
+
+    return {"schema": schema_data}
 
 @app.post("/use-mysql")
 def use_mysql(request: MySQLConnRequest):
@@ -163,8 +186,27 @@ def query_database(request: QueryRequest):
                 request.database
             )
 
+        # ---------------- RELEVANCE CHECK ----------------
+        relevance = check_question_relevance(
+            request.question,
+            schema
+        )
+
+        if not relevance["relevant"]:
+            return {
+                "question": request.question,
+                "error": "Question cannot be answered using this database.",
+                "reason": relevance["reason"],
+                "confidence": relevance["confidence"]
+            }
+
         # ---------------- LLM ----------------
-        sql = generate_sql(request.question, schema, request.db_type)
+        sql = generate_sql(
+            request.question,
+            schema,
+            request.db_type
+        )
+
         explanation = explain_sql(sql)
 
         # ---------------- VALIDATION ----------------
