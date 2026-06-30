@@ -7,7 +7,7 @@ AI SQL Assistant allows users to interact with SQLite and MySQL databases using 
 ---
 
 Live:
-[https://github.com/Retesh07](https://ai-sql-assistant-93qc.onrender.com/app)
+https://ai-sql-assistant-93qc.onrender.com/app
 
 ## 🌟 Features
 
